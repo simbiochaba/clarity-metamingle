@@ -1,15 +1,17 @@
 ;; MetaMingle Smart Contract
 (define-non-fungible-token profile principal)
+(define-fungible-token virtual-gift)
 
 ;; Data Variables
 (define-map user-profiles
     principal
     {
         name: (string-ascii 64),
-        bio: (string-ascii 256),
+        bio: (string-ascii 256), 
         age: uint,
         interests: (list 10 (string-ascii 32)),
-        active: bool
+        active: bool,
+        tokens: uint
     }
 )
 
@@ -45,14 +47,35 @@
     }
 )
 
+(define-map virtual-gifts
+    uint 
+    {
+        name: (string-ascii 32),
+        description: (string-ascii 128),
+        price: uint,
+        creator: principal
+    }
+)
+
+(define-map user-matches
+    principal
+    (list 50 {
+        match: principal,
+        score: uint,
+        shared-interests: (list 10 (string-ascii 32))
+    })
+)
+
 ;; Constants
 (define-constant contract-owner tx-sender)
 (define-data-var next-date-id uint u0)
+(define-data-var next-gift-id uint u0)
 
-;; Error constants
+;; Error constants  
 (define-constant err-not-found (err u404))
 (define-constant err-unauthorized (err u401))
 (define-constant err-already-exists (err u409))
+(define-constant err-insufficient-funds (err u402))
 
 ;; Profile Management
 (define-public (create-profile (name (string-ascii 64)) (bio (string-ascii 256)) (age uint) (interests (list 10 (string-ascii 32))))
@@ -64,7 +87,8 @@
             bio: bio,
             age: age,
             interests: interests,
-            active: true
+            active: true,
+            tokens: u100
         }))
     )
 )
@@ -81,7 +105,7 @@
     )
 )
 
-;; Virtual Date Management
+;; Virtual Date Management  
 (define-public (schedule-date (with principal) (time uint) (location (string-ascii 64)))
     (let (
         (date-id (var-get next-date-id))
@@ -92,7 +116,7 @@
             creator: caller,
             participant: with,
             time: time,
-            status: "scheduled",
+            status: "scheduled", 
             location: location
         })
         (var-set next-date-id (+ date-id u1))
@@ -113,6 +137,57 @@
     )
 )
 
+;; Virtual Gift System
+(define-public (create-gift (name (string-ascii 32)) (description (string-ascii 128)) (price uint))
+    (let (
+        (gift-id (var-get next-gift-id))
+        (caller tx-sender)
+    )
+        (map-set virtual-gifts gift-id {
+            name: name,
+            description: description,
+            price: price,
+            creator: caller
+        })
+        (var-set next-gift-id (+ gift-id u1))
+        (ok gift-id)
+    )
+)
+
+(define-public (send-gift (gift-id uint) (to principal))
+    (let (
+        (caller tx-sender)
+        (gift (unwrap! (map-get? virtual-gifts gift-id) err-not-found))
+        (sender-profile (unwrap! (map-get? user-profiles caller) err-not-found))
+    )
+        (asserts! (>= (get tokens sender-profile) (get price gift)) err-insufficient-funds)
+        (try! (ft-mint? virtual-gift (get price gift) to))
+        (ok (map-set user-profiles caller {
+            name: (get name sender-profile),
+            bio: (get bio sender-profile),
+            age: (get age sender-profile),
+            interests: (get interests sender-profile),
+            active: (get active sender-profile),
+            tokens: (- (get tokens sender-profile) (get price gift))
+        }))
+    )
+)
+
+;; Matchmaking System
+(define-public (generate-matches (user principal))
+    (let ((user-profile (unwrap! (map-get? user-profiles user) err-not-found)))
+        (ok (calculate-matches user user-profile))
+    )
+)
+
+(define-private (calculate-matches (user principal) (profile {name: (string-ascii 64), bio: (string-ascii 256), age: uint, interests: (list 10 (string-ascii 32)), active: bool, tokens: uint}))
+    (map-set user-matches user 
+        (filter matches-filter 
+            (map unwrap-profile 
+                (get-all-profiles))))
+    true
+)
+
 ;; Read-only functions
 (define-read-only (get-profile (user principal))
     (ok (map-get? user-profiles user))
@@ -120,4 +195,12 @@
 
 (define-read-only (get-date-details (date-id uint))
     (ok (map-get? virtual-dates date-id))
+)
+
+(define-read-only (get-gift-details (gift-id uint))
+    (ok (map-get? virtual-gifts gift-id))
+)
+
+(define-read-only (get-matches (user principal))
+    (ok (map-get? user-matches user))
 )

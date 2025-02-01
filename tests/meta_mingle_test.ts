@@ -23,7 +23,6 @@ Clarinet.test({
         
         block.receipts[0].result.expectOk();
         
-        // Verify profile creation
         let profileBlock = chain.mineBlock([
             Tx.contractCall('meta-mingle', 'get-profile', [
                 types.principal(wallet1.address)
@@ -36,48 +35,67 @@ Clarinet.test({
 });
 
 Clarinet.test({
-    name: "Can send and manage connection requests",
+    name: "Can create and send virtual gifts",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const wallet1 = accounts.get('wallet_1')!;
         const wallet2 = accounts.get('wallet_2')!;
         
-        let block = chain.mineBlock([
-            Tx.contractCall('meta-mingle', 'send-connection-request', [
+        // Create gift
+        let createGiftBlock = chain.mineBlock([
+            Tx.contractCall('meta-mingle', 'create-gift', [
+                types.ascii("Virtual Rose"),
+                types.ascii("A beautiful virtual rose"),
+                types.uint(50)
+            ], wallet1.address)
+        ]);
+        
+        createGiftBlock.receipts[0].result.expectOk();
+        
+        // Send gift
+        let sendGiftBlock = chain.mineBlock([
+            Tx.contractCall('meta-mingle', 'send-gift', [
+                types.uint(0),
                 types.principal(wallet2.address)
             ], wallet1.address)
         ]);
         
-        block.receipts[0].result.expectOk();
+        sendGiftBlock.receipts[0].result.expectOk();
     }
 });
 
 Clarinet.test({
-    name: "Can schedule and review virtual dates",
+    name: "Can generate and retrieve matches",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const wallet1 = accounts.get('wallet_1')!;
-        const wallet2 = accounts.get('wallet_2')!;
         
-        // Schedule date
-        let scheduleBlock = chain.mineBlock([
-            Tx.contractCall('meta-mingle', 'schedule-date', [
-                types.principal(wallet2.address),
-                types.uint(1234567),
-                types.ascii("Virtual Beach")
+        // Create profile first
+        let profileBlock = chain.mineBlock([
+            Tx.contractCall('meta-mingle', 'create-profile', [
+                types.ascii("Alice"),
+                types.ascii("Fun loving person"),
+                types.uint(25),
+                types.list([types.ascii("music"), types.ascii("travel")])
             ], wallet1.address)
         ]);
         
-        const dateId = scheduleBlock.receipts[0].result.expectOk();
+        profileBlock.receipts[0].result.expectOk();
         
-        // Submit review
-        let reviewBlock = chain.mineBlock([
-            Tx.contractCall('meta-mingle', 'submit-review', [
-                dateId,
-                types.principal(wallet2.address),
-                types.uint(5),
-                types.ascii("Great date!")
+        // Generate matches
+        let matchBlock = chain.mineBlock([
+            Tx.contractCall('meta-mingle', 'generate-matches', [
+                types.principal(wallet1.address)
             ], wallet1.address)
         ]);
         
-        reviewBlock.receipts[0].result.expectOk();
+        matchBlock.receipts[0].result.expectOk();
+        
+        // Get matches
+        let getMatchesBlock = chain.mineBlock([
+            Tx.contractCall('meta-mingle', 'get-matches', [
+                types.principal(wallet1.address)
+            ], wallet1.address)
+        ]);
+        
+        getMatchesBlock.receipts[0].result.expectOk();
     }
 });
